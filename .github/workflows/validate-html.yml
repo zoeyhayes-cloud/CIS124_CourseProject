@@ -1,0 +1,76 @@
+# The workflow's label in the repository's Actions tab.
+name: W3C HTML validation
+
+# Choose the events that start this workflow.
+on:
+  # A merge causes a push to the destination branch; direct commits also count.
+  push:
+    # Limit automatic runs to these branches.
+    branches:
+      # Check changes after they reach main, including merged pull requests.
+      - main
+  # Also allow Actions → W3C HTML validation → Run workflow.
+  workflow_dispatch:
+
+# Give the workflow only the repository access it needs.
+permissions:
+  # Allow reading files; do not allow pushing changes or merging PRs.
+  contents: read
+
+# Control what happens when several checks target the same branch.
+concurrency:
+  # Group runs by workflow name and branch reference.
+  group: w3c-${{ github.workflow }}-${{ github.ref }}
+  # Cancel an older running check when a newer one replaces it.
+  cancel-in-progress: true
+
+# Define the jobs; this workflow only needs one.
+jobs:
+  # The internal identifier for this job.
+  validate-html:
+    # The job's display name in GitHub.
+    name: Validate all HTML with W3C
+    # Use a temporary GitHub-hosted Linux machine, which includes curl.
+    runs-on: ubuntu-latest
+    # Stop the job if it takes longer than 15 minutes.
+    timeout-minutes: 15
+    # Run these steps in order on the same machine.
+    steps:
+      # Download the repository files for the triggering commit.
+      - name: Check out source
+        # Pin checkout v4 to a specific revision so its code is predictable.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        # Pass settings to the checkout action.
+        with:
+          # Do not leave GitHub credentials in the checkout's Git configuration.
+          persist-credentials: false
+      # Install the JavaScript runtime for our script.
+      - name: Set up Node.js
+        # Pin setup-node v4 to a specific revision.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        # Pass settings to the Node.js setup action.
+        with:
+          # Use Node.js 24. No npm install or third-party JavaScript packages are required.
+          node-version: '24'
+      # Find the HTML pages and submit them to W3C.
+      - name: Validate every HTML file
+        # Run our script; a nonzero exit status makes this step fail.
+        run: node scripts/validate-html.mjs
+      # Save reports as a download on the workflow run.
+      - name: Save W3C results
+        # Attempt this step even when validation fails.
+        if: always()
+        # Pin upload-artifact v4 to a specific revision.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Pass settings to the upload action.
+        with:
+          # Use this name for the downloadable report.
+          name: w3c-validation-results
+          # Upload the folder containing our JSON and Markdown reports.
+          path: .validation-results/
+          # Include the report folder even though its name starts with a dot.
+          include-hidden-files: true
+          # Warn if setup failed before creating reports, without hiding the earlier failure.
+          if-no-files-found: warn
+          # Keep each downloadable report for two weeks.
+          retention-days: 14
